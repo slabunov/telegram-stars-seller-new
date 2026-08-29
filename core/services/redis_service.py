@@ -73,6 +73,8 @@ FRAGMENT_IDEM_KEY = "fragment_idem_key"
 
 LOCK_PROMO_INPUT_PROCESSING = "lock_promo_input_processing"
 
+LOCK_ORDER_CONFIRM = "lock_order_confirm"
+
 
 _lua_get_and_del = """
 local val = redis.call('GET', KEYS[1])
@@ -108,6 +110,10 @@ def get_lock_fragment_transaction(transaction_id: str | UUID) -> str:
 
 def get_lock_promo_input_processing() -> str:
     return f"{LOCK_PROMO_INPUT_PROCESSING}"
+
+
+def get_lock_order_confirm(telegram_id: int) -> str:
+    return f"{LOCK_ORDER_CONFIRM}:{telegram_id}"
 
 
 def get_key_latest_status(service_name: str, transaction_id: str | UUID) -> str:

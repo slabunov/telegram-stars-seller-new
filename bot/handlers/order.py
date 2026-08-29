@@ -50,10 +50,14 @@ from core.services.promo_code import PromoCodeService
 from core.services.support import SupportService
 from core.services.transaction import TransactionService
 from core.services.user import UserService
+from core.services.redis_service import async_acquire_lock, get_lock_order_confirm
 from core.ioc import inject
 
 
 logger = logging.getLogger(__name__)
+
+ORDER_CONFIRM_BUSY_MESSAGE = "Заказ уже создаётся, подожди немного…"
+_ORDER_CONFIRM_LOCK_TTL = 180.0
 
 
 @ensure_use_active_conversation_with_callback
@@ -479,9 +483,31 @@ async def _handle_order_confirmed_helper(
         return BotConversationState.ORDER_CONFIRMATION
 
 
+async def _create_order_once(
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> Literal[BotConversationState.ORDER_CONFIRMATION, BotConversationState.ORDER_CONFIRMED]:
+    """Пропускает только одно создание заказа на пользователя за раз"""
+    lock = await async_acquire_lock(
+        get_lock_order_confirm(update.effective_user.id),
+        timeout=_ORDER_CONFIRM_LOCK_TTL, blocking=False, blocking_timeout=0.0
+    )
+    if lock is None:
+        _ = await update.callback_query.answer(text=ORDER_CONFIRM_BUSY_MESSAGE, show_alert=True)
+        return BotConversationState.ORDER_CONFIRMATION
+
+    _ = await update.callback_query.answer()
+    try:
+        return await _handle_order_confirmed_helper(update, context)
+    finally:
+        try:
+            await lock.release()
+        except Exception as exc:
+            logger.warning(f"Не удалось освободить замок создания заказа: {exc}")
+
+
 @ensure_use_active_conversation_with_callback
 @require_subscription(BackDestination.ORDER_CONFIRMATION)
 async def handle_order_confirmed(
         update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> Literal[BotConversationState.ORDER_CONFIRMATION, BotConversationState.ORDER_CONFIRMED]:
-    return await _handle_order_confirmed_helper(update, context)
+    return await _create_order_once(update, context)
