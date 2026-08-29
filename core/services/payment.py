@@ -27,6 +27,10 @@ logger = logging.getLogger(__name__)
 audit_logger = logging.getLogger("payment_audit")
 
 
+def _method_order_rank(api_name: str) -> int:
+    return 0 if "paypear" in api_name.lower() else 1
+
+
 class NoUsernameError(Exception):
     """Исключение для случая, когда username отсутствует."""
 
@@ -60,6 +64,10 @@ class PaymentService:
             raise MaintenanceModeException("maintenance_mode on True")
 
     async def get_active_payment_methods(self) -> tuple[PaymentMethodDTO, ...]:
+        methods = sorted(
+            await self._payment_repo.get_many_by(),
+            key=lambda method: _method_order_rank(method.api.name)
+        )
         return tuple(
             PaymentMethodDTO(
                 api_name=method.api.name,
@@ -67,7 +75,7 @@ class PaymentService:
                 external_id=method.external_id,
                 commission_percent=method.commission_percent
             )
-            for method in await self._payment_repo.get_many_by()
+            for method in methods
         )
 
     async def get_payment_method(self, method_api: str, external_method_id: int | str) -> PaymentMethod | None:
