@@ -6,6 +6,7 @@ from dishka import AsyncContainer, Provider, Scope, provide, make_async_containe
 from dishka.integrations.base import wrap_injection
 
 from core.integrations.fragment.client import FragmentClient, TIMEOUT as FRAGMENT_TIMEOUT, LIMITS as FRAGMENT_LIMITS
+from core.integrations.paypear.client import PayPearClient, TIMEOUT as PAYPEAR_TIMEOUT, LIMITS as PAYPEAR_LIMITS
 from core.integrations.platega.client import PlategaClient, TIMEOUT as PLATEGA_TIMEOUT, LIMITS as PLATEGA_LIMITS
 
 from core.repositories.fragment_transaction import FragmentTransactionRepository
@@ -45,6 +46,12 @@ class BusinessLogicProvider(Provider):
     def platega_client(self) -> Iterable[PlategaClient]:
         with httpx.Client(timeout=PLATEGA_TIMEOUT, limits=PLATEGA_LIMITS) as client:
             yield PlategaClient(client)
+            # Код после yield выполняется при вызове container.close()
+
+    @provide(scope=Scope.APP)
+    def paypear_client(self) -> Iterable[PayPearClient]:
+        with httpx.Client(timeout=PAYPEAR_TIMEOUT, limits=PAYPEAR_LIMITS) as client:
+            yield PayPearClient(client)
             # Код после yield выполняется при вызове container.close()
 
     @provide(scope=Scope.APP)

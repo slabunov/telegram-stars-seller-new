@@ -24,7 +24,9 @@ from core.integrations.platega.webhook_utils import (
 from core.integrations.platega.webhook_workflow import (
     update_order_message_workflow
 )
-from core.integrations.webhook_utils import ServicesNames, transform_into_internal_status_or_keep_original
+from core.integrations.webhook_utils import (
+    PAYMENT_SERVICE_NAMES, ServicesNames, transform_into_internal_status_or_keep_original
+)
 from core.services.redis_service import (
     sync_acquire_lock, sync_get_lock_or_retry,
     get_lock_payment_transaction, get_lock_payment_message_polling,
@@ -61,23 +63,30 @@ def update_transaction_status_task(
         if started_at is None:
             started_at = time.time()
 
-        platega_status = get_and_del_by_key(ServicesNames.PLATEGA, transaction_id)
-        if isinstance(platega_status, bytes):
-            platega_status = platega_status.decode("utf-8")
+        payment_service_name: str | None = None
+        payment_status: str | None = None
+        for candidate in PAYMENT_SERVICE_NAMES:
+            candidate_status = get_and_del_by_key(candidate, transaction_id)
+            if isinstance(candidate_status, bytes):
+                candidate_status = candidate_status.decode("utf-8")
+            if candidate_status is not None:
+                payment_service_name = candidate
+                payment_status = candidate_status
+                break
 
         fragment_status = get_and_del_by_key(ServicesNames.FRAGMENT, transaction_id)
         if isinstance(fragment_status, bytes):
             fragment_status = fragment_status.decode("utf-8")
 
-        if platega_status is not None and fragment_status is not None:
-            if platega_status == TransactionStatus.CHARGEBACKED:
-                new_status = platega_status
+        if payment_status is not None and fragment_status is not None:
+            if payment_status == TransactionStatus.CHARGEBACKED:
+                new_status = payment_status
 
             else:
                 new_status = fragment_status
 
-        elif platega_status is not None:
-            new_status = platega_status
+        elif payment_status is not None:
+            new_status = payment_status
 
         elif fragment_status is not None:
             new_status = fragment_status
@@ -99,9 +108,9 @@ def update_transaction_status_task(
 
         finally:
             if not is_success:
-                if new_status == platega_status:
+                if payment_service_name is not None and new_status == payment_status:
                     _ = sync_save_status_by_key(
-                        ServicesNames.PLATEGA, transaction_id, new_status,
+                        payment_service_name, transaction_id, new_status,
                         if_not_exists=True
                     )
 

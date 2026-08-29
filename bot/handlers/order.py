@@ -362,10 +362,14 @@ async def _handle_order_confirmed_helper(
     except ValueError:
         raise KeyboardMethodError("Цена должна быть в формате Decimal")
 
-    try:
-        external_method_id = int(external_method_id)
-    except ValueError:
-        raise KeyboardMethodError("Внешний ID метода оплаты должен быть целым числом для используемого API")
+    # Platega ожидает числовой ID метода, PayPear - строковый type (`sbp`, `card`)
+    if "platega" in method_api.lower():
+        try:
+            external_method_id = int(external_method_id)
+        except ValueError:
+            raise KeyboardMethodError("Внешний ID метода оплаты должен быть целым числом для используемого API")
+    else:
+        external_method_id = str(external_method_id)
 
     active_promo = await db_action_with_tenacity(
         promo_service.get_active_promo_for_telegram_user_id, update.effective_user.id

@@ -10,6 +10,8 @@ from django.utils.crypto import constant_time_compare
 from core.domain.enums import TransactionStatus
 from core.integrations.fragment.enums import FragmentStatus
 from core.integrations.fragment.schemas import SendStarsResponse
+from core.integrations.paypear.enums import PayPearStatus
+from core.integrations.paypear.schemas import PayPearWebhookRequestJSON, parse_paypear_metadata
 from core.integrations.platega.enums import PlategaStatus
 from core.integrations.platega.schemas import PaymentPayloadValidateModel, PlategaWebhookRequestJSON, PaymentPayloadDict
 from core.services.redis_service import get_async_redis_client, get_key_fragment_idem
@@ -20,9 +22,13 @@ logger = logging.getLogger(__name__)
 
 class ServicesNames(StrEnum):
     PLATEGA = "platega"
+    PAYPEAR = "paypear"
     FRAGMENT = "fragment"
     FRAGMENT__FROM_CREATION = "fragment__from_creation"
     FRAGMENT__FROM_WEBHOOK = "fragment__from_webhook"
+
+
+PAYMENT_SERVICE_NAMES = (ServicesNames.PLATEGA, ServicesNames.PAYPEAR)
 
 
 def validate_fragment_token(request: HttpRequest) -> HttpResponse | None:
@@ -61,12 +67,34 @@ def is_platega_authenticated(request: HttpRequest) -> bool:
     return True
 
 
+def get_client_ip(request: HttpRequest) -> str:
+    forwarded_for = request.headers.get("X-Forwarded-For", "")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR", "")
+
+
+def is_paypear_authenticated(request: HttpRequest) -> bool:
+    """
+    У PayPear нет заголовков аутентификации и задокументированного алгоритма подписи - только
+    список IP-адресов, с которых приходят уведомления (плюс сверка shop_id и перечитывание статуса).
+    """
+    allowed_ips = cast(list[str], getattr(settings, "PAYPEAR_WEBHOOK_IPS", []))
+    if not allowed_ips:
+        return False
+    return get_client_ip(request) in allowed_ips
+
+
 async def access_granted_or_http_response(request: HttpRequest, webhook_name: ServicesNames) -> HttpResponse | None:
     if request.method != "POST":
         return HttpResponse(status=405)
 
     if webhook_name == ServicesNames.PLATEGA:
         if not is_platega_authenticated(request):
+            return HttpResponse(status=403)
+
+    if webhook_name == ServicesNames.PAYPEAR:
+        if not is_paypear_authenticated(request):
             return HttpResponse(status=403)
 
     if webhook_name == ServicesNames.FRAGMENT:
@@ -116,13 +144,28 @@ def parse_request(
 ) -> tuple[PlategaWebhookRequestJSON, PaymentPayloadDict | None]: ...
 
 
+@overload
+def parse_request(
+        request: HttpRequest, service_name: Literal[ServicesNames.PAYPEAR]
+) -> tuple[PayPearWebhookRequestJSON, PaymentPayloadDict | None]: ...
+
+
 def parse_request(
         request: HttpRequest, service_name: ServicesNames
-) -> tuple[PlategaWebhookRequestJSON, PaymentPayloadDict | None] | SendStarsResponse:
+) -> (
+        tuple[PlategaWebhookRequestJSON, PaymentPayloadDict | None]
+        | tuple[PayPearWebhookRequestJSON, PaymentPayloadDict | None]
+        | SendStarsResponse
+):
     if service_name == ServicesNames.PLATEGA:
         data = cast(PlategaWebhookRequestJSON, json.loads(request.body))
         parsed_payload = parse_platega_payload(data)
         return data, parsed_payload
+
+    if service_name == ServicesNames.PAYPEAR:
+        paypear_data = cast(PayPearWebhookRequestJSON, json.loads(request.body))
+        paypear_payload = parse_paypear_metadata(paypear_data.get("object", {}).get("metadata"))
+        return paypear_data, paypear_payload
 
     if service_name == ServicesNames.FRAGMENT:
         return cast(SendStarsResponse, json.loads(request.body))
@@ -134,6 +177,12 @@ def transform_into_internal_status_or_keep_original(new_status: str, service_nam
     if service_name == ServicesNames.PLATEGA:
         return (
             PlategaStatus
+            .transform_into_internal_status_or_keep_original(new_status)
+        )
+
+    if service_name == ServicesNames.PAYPEAR:
+        return (
+            PayPearStatus
             .transform_into_internal_status_or_keep_original(new_status)
         )
 

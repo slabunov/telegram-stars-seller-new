@@ -34,7 +34,7 @@ async def _notify(bot: Bot, message_thread_id: int | None, text: str) -> Message
 @overload
 async def notify_admin_about_order_creation(  # noqa  # pyright: ignore[reportInconsistentOverload]
         bot: Bot,
-        amount_stars: int, price: Decimal, method_api: str, external_method_id: int,
+        amount_stars: int, price: Decimal, method_api: str, external_method_id: int | str,
         buyer_username: str, target_username: str,
         active_promo: PromoCode | None,
         transaction_id: UUID | str
@@ -43,7 +43,7 @@ async def notify_admin_about_order_creation(  # noqa  # pyright: ignore[reportIn
 @inject
 async def notify_admin_about_order_creation(
         bot: Bot,
-        amount_stars: int, price: Decimal, method_api: str, external_method_id: int,
+        amount_stars: int, price: Decimal, method_api: str, external_method_id: int | str,
         buyer_username: str, target_username: str,
         active_promo: PromoCode | None,
         transaction_id: UUID | str,

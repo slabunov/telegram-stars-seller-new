@@ -10,6 +10,7 @@ from core.integrations.fragment.errors import (
     FragmentAPITemporaryError,
     FragmentAPITooManyRequests
 )
+from core.integrations.paypear.errors import PayPearAPINetworkError
 from core.integrations.platega.errors import PlategaAPINetworkError
 
 
@@ -40,7 +41,8 @@ async def retries_with_tenacity[**P,R](func: Callable[P,Awaitable[R]], *args: P.
                     FragmentAPINetworkError,
                     FragmentAPITemporaryError,
                     FragmentAPITooManyRequests,
-                    PlategaAPINetworkError
+                    PlategaAPINetworkError,
+                    PayPearAPINetworkError
             )),
             reraise=True
     ):

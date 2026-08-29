@@ -24,6 +24,7 @@ from core.integrations.fragment.errors import (
     FragmentAPITemporaryError,
     FragmentAPITooManyRequests
 )
+from core.integrations.paypear.errors import PayPearAPIError
 from core.integrations.platega.errors import PlategaAPIError
 from core.services.payment import MaintenanceModeException, NoUsernameError
 from core.services.redis_service import DecodingRedisDataError
@@ -72,7 +73,7 @@ async def error_handler(
     support_url = await support_service.get_support_url()
     reply_markup = await build_support_kb(support_url)
 
-    if isinstance(error, (FragmentAPIError, PlategaAPIError)):
+    if isinstance(error, (FragmentAPIError, PlategaAPIError, PayPearAPIError)):
         text = (
             "❌ <b>Произошла ошибка!</b>\n\n"
             "Попробуй последнее действие снова или вернись назад, если есть возможность. Либо начинай новый заказ "

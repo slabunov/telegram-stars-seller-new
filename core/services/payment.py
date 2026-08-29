@@ -8,6 +8,7 @@ from core.dto.payment import PaymentDTO, PaymentMethodDTO
 
 from core.integrations.fragment.client import FragmentClient
 from core.integrations.fragment.schemas import SendStarsResponse
+from core.integrations.paypear.client import PayPearClient
 from core.integrations.platega.client import PlategaClient
 from core.integrations.platega.schemas import PaymentPayloadDict
 
@@ -43,6 +44,7 @@ class PaymentService:
             payment_repo: PaymentRepository,
             star_service: StarService,
             platega_client: PlategaClient,
+            paypear_client: PayPearClient,
             fragment_client: FragmentClient
     ):
         self._trans_repo = trans_repo
@@ -50,6 +52,7 @@ class PaymentService:
         self._payment_repo = payment_repo
         self._star_service = star_service
         self._platega_client = platega_client
+        self._paypear_client = paypear_client
         self._fragment_client = fragment_client
 
     async def ensure_no_maintenance_mode(self) -> None:
@@ -67,7 +70,7 @@ class PaymentService:
             for method in await self._payment_repo.get_many_by()
         )
 
-    async def get_payment_method(self, method_api: str, external_method_id: int) -> PaymentMethod | None:
+    async def get_payment_method(self, method_api: str, external_method_id: int | str) -> PaymentMethod | None:
         return await self._payment_repo.get_payment_method_by(method_api, external_method_id, is_check_is_active=False)
 
     async def create_payment(
@@ -103,9 +106,9 @@ class PaymentService:
 
         - `payment_api` - str, API для создания платежа.
 
-        - `method` - int | str, если payment_api = "Platega", то это должен быть int, который соответствует
-        нужному методу, другие API сейчас не поддерживаются.
-        Значения для int: 2 - СБП, 11 - Карточный эквайринг, 12 - Международный эквайринг, 13 - Криптовалюта.
+        - `method` - int | str, идентификатор метода оплаты во внешнем API (`PaymentMethod.external_id`).
+        Для "Platega" это int (2 - СБП, 11 - Карточный эквайринг, 12 - Международный эквайринг, 13 - Криптовалюта),
+        для "PayPear" - строковый `type` из ЛК (`sbp`, `card`, ...).
         В данный момент поддерживается только RUB.
 
         - `target_username` - str, по умолчанию "", если указан, то этому человеку будет сделан перевод звёзд.
@@ -126,30 +129,32 @@ class PaymentService:
 
             payload_target_username = user_buyer.username
 
-        if "platega" in payment_api.lower():
-            description = f"For telegram user with ID {user_id}"
+        description = f"For telegram user with ID {user_id}"
 
-            if payload_target_username is None:
-                payload_target_username = target_username
+        if payload_target_username is None:
+            payload_target_username = target_username
 
-            payload: PaymentPayloadDict = {
-                "user_id": user_id,
-                "message_id": message_id,
-                "price": float(price),
-                "stars_count": stars_count,
-                "target_username": payload_target_username,
-                "payment_api": payment_api,
-                "pay_url": "",
-                "promo_id": None,
-                "promo_name": "",
-                "promo_discount": None
-            }
+        payload: PaymentPayloadDict = {
+            "user_id": user_id,
+            "message_id": message_id,
+            "price": float(price),
+            "stars_count": stars_count,
+            "target_username": payload_target_username,
+            "payment_api": payment_api,
+            "pay_url": "",
+            "promo_id": None,
+            "promo_name": "",
+            "promo_discount": None
+        }
 
-            if promo is not None:
-                payload["promo_id"] = promo.id
-                payload["promo_name"] = promo.name
-                payload["promo_discount"] = str(promo.discount)
+        if promo is not None:
+            payload["promo_id"] = promo.id
+            payload["promo_name"] = promo.name
+            payload["promo_discount"] = str(promo.discount)
 
+        api_lower = payment_api.lower()
+
+        if "platega" in api_lower:
             username = user_buyer.username
             if not username:
                 if not target_username:
@@ -165,8 +170,16 @@ class PaymentService:
                 payload=json.dumps(payload, ensure_ascii=False)
             )
 
+        elif "paypear" in api_lower:
+            payment_dto = await self._paypear_client.create_payment(
+                str(method),
+                float(price), "RUB",
+                description,
+                payload
+            )
+
         else:
-            raise NotImplementedError("Only Platega API is supported now")
+            raise NotImplementedError(f"Payment API '{payment_api}' is not supported")
 
         return payment_dto, payload
 

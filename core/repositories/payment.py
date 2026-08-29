@@ -19,7 +19,7 @@ class PaymentRepository:
     async def get_payment_method_by(
             self,
             method_api: str,
-            external_method_id: int | None = None,
+            external_method_id: int | str | None = None,
             method_name: str | None = None,
             is_check_is_active: bool = True,
             is_active_value: bool = True

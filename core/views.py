@@ -5,6 +5,8 @@ from uuid import UUID
 from random import randint
 from typing import cast
 
+from django.conf import settings
+from django.utils.crypto import constant_time_compare
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.models import User
 from django.http import HttpRequest, HttpResponse, JsonResponse
@@ -46,6 +48,31 @@ async def _process_webhook(request: HttpRequest, service_name: ServicesNames) ->
         )
 
         payment_method = str(platega_data["paymentMethod"])
+
+    elif service_name == ServicesNames.PAYPEAR:
+        paypear_data, parsed_payload = parse_request(request, service_name)
+        paypear_object = paypear_data.get("object", {})
+
+        # На наш webhook_url PayPear шлёт только события платежей; возвраты/выплаты
+        # настраиваются отдельно в ЛК. Остальное подтверждаем и игнорируем.
+        event = paypear_data.get("event", "")
+        if not event.startswith("payment."):
+            logger.info(f"PayPear webhook: игнорируем событие {event!r}")
+            return HttpResponse(status=200)
+
+        # Уведомления PayPear не подписаны, так что сверяем магазин.
+        shop_id = str(paypear_object.get("shop_id", ""))
+        if shop_id and not constant_time_compare(shop_id, str(settings.PAYPEAR_SHOP_ID)):
+            logger.warning(f"PayPear webhook: shop_id mismatch (got {shop_id})")
+            return HttpResponse(status=403)
+
+        transaction_id = paypear_object.get("order_id")
+        new_status = transform_into_internal_status_or_keep_original(
+            paypear_object.get("status", ""),
+            service_name
+        )
+
+        payment_method = ""
 
     elif service_name == ServicesNames.FRAGMENT:
         fragment_data: SendStarsResponse = parse_request(request, service_name)
@@ -108,6 +135,12 @@ async def _process_webhook(request: HttpRequest, service_name: ServicesNames) ->
 async def payment_webhook(request: HttpRequest) -> HttpResponse:
     """Вызывает сервисы для обновления статуса и отправляет сообщение через PTB Bot."""
     return await _process_webhook(request, ServicesNames.PLATEGA)
+
+
+@csrf_exempt
+async def paypear_webhook(request: HttpRequest) -> HttpResponse:
+    """Уведомления PayPear об изменении статуса платежа."""
+    return await _process_webhook(request, ServicesNames.PAYPEAR)
 
 
 @csrf_exempt
