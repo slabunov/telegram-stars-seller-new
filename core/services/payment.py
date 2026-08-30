@@ -137,10 +137,12 @@ class PaymentService:
 
             payload_target_username = user_buyer.username
 
-        description = f"For telegram user with ID {user_id}"
-
         if payload_target_username is None:
             payload_target_username = target_username
+
+        description = f"Purchase of {stars_count} stars for @{payload_target_username}"
+        if promo is not None:
+            description += f" (promocode: {promo.name} {promo.discount}%)"
 
         payload: PaymentPayloadDict = {
             "user_id": user_id,
