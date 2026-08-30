@@ -170,9 +170,9 @@ class TransactionAdmin(admin.ModelAdmin, TransactionMetadataMixin):  # pyright: 
         ("expires_at", admin.DateFieldListFilter)
     )
     search_fields = (
-        "telegram_user__username", "telegram_user__telegram_id", "metadata_info__promo_name"
+        "id", "telegram_user__username", "telegram_user__telegram_id", "metadata_info__promo_name"
     )
-    search_help_text = "Поиск по имени пользователя или ID и имени промокода"
+    search_help_text = "Поиск по ID транзакции, имени пользователя или ID и имени промокода"
     readonly_fields = ("created_at", "expires_at", "updated_at")
     readonly_fields_when_created = ("id",)
     inlines = [TransactionMetadataInline]
