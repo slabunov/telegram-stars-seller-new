@@ -1,15 +1,13 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-from bot.callbacks import BackCallback, ProfileMenuCallback, HistoryPageCallback, create_callback
-from bot.enums import BackDestination, ProfileAction
+from bot.callbacks import BackCallback, HistoryPageCallback, create_callback
+from bot.enums import BackDestination
 
 
 async def build_profile_kb(telegram_id: int, ) -> InlineKeyboardMarkup:
+    # Кнопка "📦 История заказов" скрыта: история показывает только транзакции в статусе SUCCESS,
+    # а до него доходят не все оплаченные заказы. Вернуть, когда статусы будут доходить до SUCCESS.
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(
-            "📦 История заказов",
-            callback_data=await create_callback(telegram_id, ProfileMenuCallback(ProfileAction.HISTORY))
-        )],
         [InlineKeyboardButton(
             "◀️ Назад",
             callback_data=await create_callback(telegram_id, BackCallback(BackDestination.MAIN_MENU))

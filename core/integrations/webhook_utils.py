@@ -38,44 +38,18 @@ def validate_fragment_token(request: HttpRequest) -> HttpResponse | None:
     return None
 
 
-def get_fragment_idem_key_or_none(request: HttpRequest) -> str | None:
-    return request.headers.get("X-Idempotency-Key") or None
-
-
 async def validate_fragment_idempotency_key(request: HttpRequest) -> HttpResponse | None:
-    idem_key = get_fragment_idem_key_or_none(request)
-    if idem_key is None:
-        return None
+    idem_key = request.headers.get("X-Idempotency-Key")
 
-    is_new = await get_async_redis_client().set(
-        get_key_fragment_idem(idem_key), "1", ex=172800, nx=True  # 48 часов
-    )
-    if not is_new:
-        return HttpResponse(status=200)
+    if idem_key:
+        async_redis_client = get_async_redis_client()
+        key = get_key_fragment_idem(idem_key)
+        is_new = await async_redis_client.setnx(key, "1")
+        if not is_new:
+            return HttpResponse(status=200)
+        _ = await async_redis_client.expire(key, 172800)  # 48 часов
 
     return None
-
-
-async def release_fragment_idempotency_key(request: HttpRequest, service_name: ServicesNames) -> None:
-    """
-    Снимает заявку идемпотентности, если обработку вебхука не удалось довести до 200.
-
-    Ретрай приходит с тем же ключом идемпотентности, поэтому заявка, оставленная после 400/429/500,
-    навсегда глушит повторную доставку: обработчик отвечает 200 и выбрасывает уведомление. Так
-    терялся финальный COMPLETED от Fragment, и оплаченный заказ навсегда оставался в SEND_CREATED.
-    """
-    if service_name != ServicesNames.FRAGMENT:
-        return
-
-    idem_key = get_fragment_idem_key_or_none(request)
-    if idem_key is None:
-        return
-
-    try:
-        _ = await get_async_redis_client().delete(get_key_fragment_idem(idem_key))
-
-    except Exception as exc:
-        logger.warning(f"Не удалось снять ключ идемпотентности Fragment: {exc}")
 
 
 def is_platega_authenticated(request: HttpRequest) -> bool:
