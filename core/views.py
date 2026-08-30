@@ -18,6 +18,7 @@ from core.integrations.webhook_utils import (
     ServicesNames,
     access_granted_or_http_response,
     parse_request,
+    release_fragment_idempotency_key,
     transform_into_internal_status_or_keep_original
 )
 from core.services.redis_service import (
@@ -34,6 +35,20 @@ async def _process_webhook(request: HttpRequest, service_name: ServicesNames) ->
     if http_response is not None:
         return http_response
 
+    try:
+        response = await _handle_webhook(request, service_name)
+
+    except Exception:
+        await release_fragment_idempotency_key(request, service_name)
+        raise
+
+    if response.status_code != 200:
+        await release_fragment_idempotency_key(request, service_name)
+
+    return response
+
+
+async def _handle_webhook(request: HttpRequest, service_name: ServicesNames) -> HttpResponse:
     parsed_payload = None
     payment_method: str = ""
 
