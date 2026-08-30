@@ -45,6 +45,7 @@ class FragmentClient:
     GET_WALLET_BALANCE = "misc/wallet/"
     GET_USER_PATH = "misc/user/"
     SEND_STARS_PATH = "order/stars/"
+    GET_ORDER_PATH = "order/{order_id}/"
 
     def __init__(self, client: httpx.Client, fragment_tx_service: FragmentTransactionService):
         self.url = cast(str, getattr(settings, "FRAGMENT_API_URL", None))  # noqa
@@ -250,6 +251,46 @@ class FragmentClient:
             payload["response_url"] = self.build_response_url(transaction_id)
 
         return await self._send_stars_request(payload, timeout=timeout, connect=connect)
+
+    async def get_order(
+            self,
+            fragment_order_id: UUID | str,
+            *,
+            timeout: float | None = None,
+            connect: float | None = None
+    ) -> SendStarsResponse | None:
+        """
+        Актуальное состояние заказа во fragment-api (`GET /order/{id}/`).
+
+        Fragment сообщает о завершении заказа только через `response_url`, поэтому это
+        единственный способ узнать финальный статус, когда вебхук не дошёл.
+        Используется задачей опроса `poll_unfinished_fragment_orders_task`.
+
+        Может выбросить `FragmentAPIError` (в том числе при истёкшем токене)
+        и `FragmentAPITooManyRequests`.
+
+        Returns:
+            тело заказа, либо `None`, если заказ не найден (404) или включён `DEBUG_FRAGMENT`
+        """
+        if self.debug:
+            return None
+
+        response = await self._make_request(
+            "GET",
+            self.GET_ORDER_PATH.format(order_id=fragment_order_id),
+            timeout=timeout, connect=connect
+        )
+
+        if response.status_code == 200:
+            return cast(SendStarsResponse, response.json())
+
+        if response.status_code == 404:
+            return None
+
+        logger.error(f"Не удалось получить заказ {fragment_order_id}: {response.status_code = } - {response.text = }")
+        raise FragmentAPIError(
+            f"Не удалось получить заказ {fragment_order_id}: {response.status_code = } - {response.text = }"
+        )
 
     async def get_current_prices(
             self,

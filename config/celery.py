@@ -13,7 +13,10 @@ _ = os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 
 
 class _SilenceHeartbeatTasks(logging.Filter):
-    _NEEDLES = ("poll_pending_paypear_payments_task", "poll-pending-paypear-payments")
+    _NEEDLES = (
+        "poll_pending_paypear_payments_task", "poll-pending-paypear-payments",
+        "poll_unfinished_fragment_orders_task", "poll-unfinished-fragment-orders",
+    )
 
     def filter(self, record: logging.LogRecord) -> bool:
         if record.levelno > logging.INFO:
@@ -54,6 +57,10 @@ app.conf.beat_schedule = {
     "poll-pending-paypear-payments": {
         "task": "core.tasks.periodic.payments.poll_pending_paypear_payments_task",
         "schedule": float(os.environ.get("PAYPEAR_POLL_SECONDS", "5")),  # опрос статусов PayPear
+    },
+    "poll-unfinished-fragment-orders": {
+        "task": "core.tasks.periodic.fragment_orders.poll_unfinished_fragment_orders_task",
+        "schedule": float(os.environ.get("FRAGMENT_POLL_SECONDS", "15")),  # опрос статусов заказов Fragment
     },
 }
 

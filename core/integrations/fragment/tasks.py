@@ -40,12 +40,20 @@ def update_fragment_tx_task(
         status_from_webhook = get_and_del_by_key(
             ServicesNames.FRAGMENT__FROM_WEBHOOK, transaction_id
         )
+        status_from_poll = get_and_del_by_key(
+            ServicesNames.FRAGMENT__FROM_POLL, transaction_id
+        )
         status_from_creation = get_and_del_by_key(
             ServicesNames.FRAGMENT__FROM_CREATION, transaction_id
         )
 
+        # Вебхук и опрос одинаково авторитетны, но вебхук приходит раньше, поэтому он в приоритете.
+        # Статус из момента создания заказа - самый старый, он идёт последним.
         if status_from_webhook is not None:
             new_status = status_from_webhook
+
+        elif status_from_poll is not None:
+            new_status = status_from_poll
 
         elif status_from_creation is not None:
             new_status = status_from_creation
@@ -69,6 +77,12 @@ def update_fragment_tx_task(
                 if new_status == status_from_webhook:
                     _ = sync_save_status_by_key(
                         ServicesNames.FRAGMENT__FROM_WEBHOOK, transaction_id, new_status,
+                        if_not_exists=True
+                    )
+
+                elif new_status == status_from_poll:
+                    _ = sync_save_status_by_key(
+                        ServicesNames.FRAGMENT__FROM_POLL, transaction_id, new_status,
                         if_not_exists=True
                     )
 

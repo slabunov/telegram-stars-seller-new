@@ -26,6 +26,7 @@ class ServicesNames(StrEnum):
     FRAGMENT = "fragment"
     FRAGMENT__FROM_CREATION = "fragment__from_creation"
     FRAGMENT__FROM_WEBHOOK = "fragment__from_webhook"
+    FRAGMENT__FROM_POLL = "fragment__from_poll"
 
 
 PAYMENT_SERVICE_NAMES = (ServicesNames.PLATEGA, ServicesNames.PAYPEAR)
